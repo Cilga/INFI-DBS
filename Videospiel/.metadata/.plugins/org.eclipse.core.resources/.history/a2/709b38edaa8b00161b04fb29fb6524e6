@@ -1,0 +1,116 @@
+import java.sql.Statement;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
+public class Test {
+	static Connection conn = null;
+	static Statement stmt = null;
+	static String sql = null;
+	public static void main(String[] args){
+		try{
+			Class.forName("org.sqlite.JDBC");
+			conn = DriverManager.getConnection("jdbc:sqlite:Videospiel.db");
+			System.out.println("Connection zur Datenbank wurde erstellt");
+			stmt = conn.createStatement();
+			sql = "CREATE TABLE IF NOT EXISTS PLAYER" 
+					+ "(username TEXT PRIMARY KEY NOT NULL,"
+					+ "password TEXT NOT NULL," 
+					+ "e-mail TEXT NOT NULL"
+					+ ")";
+			stmt.execute(sql);
+			stmt.close();
+			System.out.println("Tabelle Player wurde erstellt");
+			stmt = conn.createStatement();
+			sql = "CREATE TABLE IF NOT EXISTS LEVEL" 
+					+ "(levelid INT PRIMARY KEY NOT NULL," 
+					+ "creator TEXT NOT NULL," 
+					+ "description TEXT NOT NULL"
+					+ ")";
+			stmt.execute(sql);
+			stmt.close();
+			System.out.println("Tabelle Level wurde erstellt");
+			stmt = conn.createStatement();
+			sql = "CREATE TABLE IF NOT EXISTS RANKING" 
+					+ "(points INT NOT NULL," 
+					+ "date DATE NOT NULL," 
+					+ "levelid INT NOT NULL,"  
+					+ "username TEXT NOT NULL,"
+					+ "FOREIGN KEY (levelid) REFERENCES LEVEL(levelid),"
+					+ "FOREIGN KEY (username REFERENCES PLAYER(username)"
+					+ ")";
+			stmt.execute(sql);
+			stmt.close();
+			System.out.println("Tabelle Ranking wurde erstellt");
+		}
+		catch(SQLException e){
+			e.printStackTrace();
+		}
+		try {
+			sql = "INSERT INTO PLAYER(username, password, e-mail) " +
+					"VALUES (cilga, cilgus, cilga@gmx.com)";
+			stmt = conn.createStatement();
+			stmt.execute(sql);
+			stmt.close();
+			System.out.println("Datensätze wurden in die Tabelle Player eingefügt");
+		}catch(SQLException e){
+			e.printStackTrace();
+		}
+		try {
+			sql = "INSERT INTO LEVEL(levelid, creator, description) " +
+					"VALUES (13, cilga, hammerhart)";
+			stmt = conn.createStatement();
+			stmt.execute(sql);
+			stmt.close();
+			System.out.println("Datensätze wurden in die Tabelle Level eingefügt");
+		}catch(SQLException e){
+			e.printStackTrace();
+		}
+		try {
+			sql = "INSERT INTO RANKING(points, date, levelid, username) " +
+					"VALUES (9001, 08-04-1998, 13, cilga)";
+			stmt = conn.createStatement();
+			stmt.execute(sql);
+			stmt.close();
+			System.out.println("Datensätze wurden in die Tabelle Ranking eingefügt");
+		}catch(SQLException e){
+			e.printStackTrace();
+		}
+		try{
+			sql = "SELECT * FROM PLAYER";
+			stmt = conn.createStatement();
+			stmt.execute(sql);
+			System.out.println("Datensätze wurden aus der Tabelle Player gelesen");
+			stmt.close();
+		}
+		catch(SQLException e){
+			e.printStackTrace();	
+		}
+		try{
+			sql = "SELECT * FROM LEVEL";
+			stmt = conn.createStatement();
+			stmt.execute(sql);
+			System.out.println("Datensätze wurden aus der Tabelle Level gelesen");
+			stmt.close();
+		}
+		catch(SQLException e){
+			e.printStackTrace();
+		}
+		try{
+			sql = "SELECT * FROM RANKING";
+			stmt = conn.createStatement();
+			stmt.execute(sql);
+			System.out.println("Datensätze wurden aus der Tabelle Ranking gelesen");
+			stmt.close();
+		}
+		catch(SQLException e){
+			e.printStackTrace();
+		}
+		try {
+			conn.close();
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+
+}

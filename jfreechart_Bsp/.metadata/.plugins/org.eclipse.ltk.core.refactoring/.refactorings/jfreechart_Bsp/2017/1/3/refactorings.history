@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring accessors="true" comment="Delete element from project &apos;jfreechart_Bsp&apos;&#x0D;&#x0A;- Original project: &apos;jfreechart_Bsp&apos;&#x0D;&#x0A;- Original element: &apos;jfreechart_Bsp/src/jfreechart_Bsp&apos;" description="Delete element" element1="/src&lt;jfreechart_Bsp" elements="1" flags="589830" id="org.eclipse.jdt.ui.delete" resources="0" stamp="1484552686013" subPackages="false" version="1.0"/>
+</session>

@@ -1,0 +1,15 @@
+import java.util.Date;
+public class Ranking {
+
+	private int playerid;
+	private int levelid;
+	private int points;
+	private Date date;
+	
+	public Ranking(int playerid, int levelid, int points, Date date){
+		this.playerid = playerid;
+		this.levelid = levelid;
+		this.points = points;
+		this.date = date;
+	}
+}

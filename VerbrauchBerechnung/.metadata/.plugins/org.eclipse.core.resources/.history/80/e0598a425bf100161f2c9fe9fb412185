@@ -1,0 +1,427 @@
+import java.io.BufferedWriter;
+import static java.lang.Math.toIntExact;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+
+public class DBManager {
+
+	static Connection conn = null;
+	static Statement stmt = null;
+	static ResultSet rs = null;
+	static String wert;
+	static FileWriter out;
+	static BufferedWriter out1;
+	static int monate = 12;
+	static int jahr = 2016;
+
+	public static void main (String[] args) throws SQLException{
+
+		try {
+			Class.forName("org.sqlite.JDBC");
+			conn = DriverManager.getConnection("jdbc:sqlite:verbrauch.db");
+
+		} catch (Exception e){
+			e.printStackTrace();
+		}	
+
+		wert = "strom";
+		System.out.println(getValues(wert));
+		System.out.println(getDaten(wert));
+
+		wert = "wasser";
+		System.out.println(getValues(wert));
+		System.out.println(getDaten(wert)); 
+
+		System.out.println(datenZuMonateZuordung(wert));
+		System.out.println(valuesZuMonateZuordung(wert));
+
+		wert= "strom";
+
+		System.out.println(valuesZuMonateZuordung(wert));
+
+		System.out.println(Interpolation(wert)); 
+		
+		AusgabeInTextdateiValuesStrom(wert);
+
+	}	
+	public static ArrayList<Long> getDaten(String wert){
+
+		ArrayList<Long> datenUTS = new ArrayList<Long>();
+
+		//Diese werden benötigt, um Daten auszusortieren, welche nicht im Jahr 2016 erfasst wurden
+		Date date1 = new Date(jahr-1900,0,1);          
+		long date1UTS = date1.getTime()/1000L;
+		Date date2 = new Date(jahr-1900,11,31);
+		long date2UTS = date2.getTime()/1000L;	
+
+		try{
+
+			stmt = conn.createStatement();
+
+			//Alle Daten werden von der Datenbank ausgelesen, welche in 2016 erfasst wurden
+			String sql = "SELECT datum FROM "+wert+"_verbrauch WHERE datum >= "+date1UTS+" AND "
+					+ "datum <="+date2UTS+";";
+			ResultSet rs = stmt.executeQuery(sql);
+
+			if(!rs.next())
+			{
+				return null;
+			}
+
+			while(rs.next())
+			{
+				datenUTS.add(rs.getLong("datum"));
+			}
+
+		}catch(Exception e){}
+
+		return datenUTS;
+	}
+
+	public static ArrayList<Long> getValues(String wert){
+
+		ArrayList<Long> values = new ArrayList<Long>();
+
+		//Diese werden benötigt, um Values auszusortieren, welche nicht im Jahr 2016 erfasst wurden
+		Date date1 = new Date(jahr-1900,0,1);          
+		long date1UTS = date1.getTime()/1000L;
+		Date date2 = new Date(jahr-1900,11,31);
+		long date2UTS = date2.getTime()/1000L;
+		try{
+
+			stmt = conn.createStatement();
+
+			//Alle Values werden von der Datenbank ausgelesen, welche in 2016 erfasst wurden
+			String sql = "SELECT value FROM "+wert+"_verbrauch WHERE datum >= "+date1UTS+" AND "
+					+ "datum <="+date2UTS+";";
+			ResultSet rs = stmt.executeQuery(sql);
+
+			if(!rs.next())
+			{
+				return null;
+			}
+
+			while(rs.next())
+			{
+				values.add(rs.getLong("value"));
+			}
+
+		}catch(Exception e){}
+
+		return values;
+	}
+
+	public static ArrayList<ArrayList<Long>> datenZuMonateZuordung(String wert){
+
+		ArrayList<ArrayList<Long>> keineAhnung = new ArrayList<ArrayList<Long>>(12);
+
+		for(int i = 0; i < monate; i++){
+
+			ArrayList<Long> a = new ArrayList<Long>();
+			keineAhnung.add(a);
+
+			for(int j = 0; j < getDaten(wert).size(); j++){
+
+				Date date = new Date(getDaten(wert).get(j)*1000);
+
+				if(date.getMonth() == i){
+
+					keineAhnung.get(i).add(getDaten(wert).get(j));
+
+				}
+			}
+		}
+
+		return keineAhnung;
+	} 
+
+	public static ArrayList<ArrayList<Long>> valuesZuMonateZuordung(String wert){
+
+		ArrayList<ArrayList<Long>> keineAhnung = new ArrayList<ArrayList<Long>>(12);
+
+		for(int i = 0; i < monate; i++){
+
+			ArrayList<Long> a = new ArrayList<Long>();
+			keineAhnung.add(a);
+
+			for(int j = 0; j < getDaten(wert).size(); j++){
+
+				Date date = new Date(getDaten(wert).get(j)*1000);
+
+				if(date.getMonth() == i){
+
+					keineAhnung.get(i).add(getValues(wert).get(j));
+
+				}
+			}
+		}
+
+		return keineAhnung;
+	}
+
+	public static ArrayList<Long> Interpolation(String wert){
+
+		//Wird benötigt, um letzen x-Wert im Monat zu bekommen 
+		int tageImMonat = 0;
+		//Arraylist von den durch Interpolation berechneten, absoluten Verbräuchen pro Monat
+		ArrayList<Long> verbrauchProMonat = new ArrayList<Long>(monate);
+		//Die Verbrauchswerte des letzten Tages aller Monate, welche durch 
+		//Interpolation berechnet wurden, sind hier gespeichert, sodass
+		//die Steigung berechnet wird, indem man diese gespeicherten
+		//Werte als y1 Werte für die Berechnung der Steigung verwendet (außer im 1. Monat)
+		long[] verbrauchDesLetzenTagesProMonat = new long [monate];
+		//Die Daten in UTS des letzten Tage aller Monate sind hier gespeichert, sodass
+		//die Steigung berechnet wird, indem man diese gespeicherten
+		//Werte als x1 Werte für die Berechnung der Steigung verwendet (außer im 1. Monat)
+		long[] datumUTSDesLetztenTagesProMonat = new long [monate];
+		//Wird benötigt um über Monate zu interpolieren, welche keine Aufezeichnungen
+		//haben 
+		long[] verbrauchDesErstenTagesProMonat = new long [monate];
+		//Wird benötigt um über Monate zu interpolieren, welche keine Aufezeichnungen
+		//haben 
+		long[] datumUTSDesErstenTagesProMonat = new long [monate];	
+
+		long k = 0;
+		long d = 0;
+
+		//Alle 12 Listen in der Arrayist von Arraylisten werden durchgegangen
+		for(int i = 0; i < monate; i++){
+
+			//Wenn in einem Monate mindestens 2-mal aufgezeichnet wurde
+			if(datenZuMonateZuordung(wert).get(i).size() > 0){
+				//Wenn der Monat Januar ist
+				if(i == 0 && datenZuMonateZuordung(wert).get(i).size() > 1){
+
+					tageImMonat = 31;
+
+					//k wird berechnet = (y2 - y1)/(x2 - x1)
+					k = (valuesZuMonateZuordung(wert).get(i).get(valuesZuMonateZuordung(wert).get(i).size()-1) - 
+							(valuesZuMonateZuordung(wert).get(i).get(0)))
+							/
+							(datenZuMonateZuordung(wert).get(i).get(datenZuMonateZuordung(wert).get(i).size()-1) - 
+									(datenZuMonateZuordung(wert).get(i).get(0)));
+
+					//d wird berechnet = y1 - k * x1 oder y2 - k * x2
+					d = (valuesZuMonateZuordung(wert).get(i).get(0)) - 
+							k * (datenZuMonateZuordung(wert).get(i).get(0));
+
+
+					Date ersterTag = new Date(jahr-1900, i, 1);
+					long ersterTagUTS = ersterTag.getTime()/1000L;
+					Date letzterTag = new Date(jahr-1900, i, tageImMonat);
+					long letzterTagUTS = letzterTag.getTime()/1000L;
+
+					long verbrauchErsterMonatsTag = k * ersterTagUTS + d;
+					long verbrauchLetzterMonatsTag = k * letzterTagUTS + d;
+
+					//Der absloute Verbrauch pro Monat wird berechnet
+					long verbrauchProMonate = verbrauchLetzterMonatsTag - verbrauchErsterMonatsTag;
+					verbrauchProMonat.add(verbrauchProMonate);
+
+					//Verbrauch des letzen Tages im Monat wird gespeichert, sodass
+					//man im nächsten Monat von diesem y Wert ausgehen kann
+					verbrauchDesLetzenTagesProMonat[i] = verbrauchLetzterMonatsTag;
+
+					//Datum des letzen Tages in UTS im Monat wird gespeichert, sodass
+					//man im nächsten Monat von diesem x Wert ausgehen kann
+					datumUTSDesLetztenTagesProMonat[i] = letzterTagUTS;
+
+					//Verbrauch des ersten Tages im Monat wird gespeichert, sodass
+					//man über Monate interpolieren kann, welche keine Aufzeichnungen 
+					//haben (als y1 Wert)
+					verbrauchDesErstenTagesProMonat[i] = verbrauchErsterMonatsTag;
+
+					//Datumdes ersten Tages im Monat wird gespeichert, sodass
+					//man über Monate interpolieren kann, welche keine Aufzeichnungen 
+					//haben (als x1 Wert)
+					datumUTSDesErstenTagesProMonat[i] = ersterTagUTS;
+
+
+
+				}
+
+				//Wenn der Monat nicht Januar ist
+				else{
+
+					if(i == 1){tageImMonat = 29;}
+					if(i == 2){tageImMonat = 31;}
+					if(i == 3){tageImMonat = 30;}
+					if(i == 4){tageImMonat = 31;}
+					if(i == 5){tageImMonat = 30;}
+					if(i == 6){tageImMonat = 31;}
+					if(i == 7){tageImMonat = 31;}
+					if(i == 8){tageImMonat = 30;}
+					if(i == 9){tageImMonat = 31;}
+					if(i == 10){tageImMonat = 30;}
+					if(i == 11){tageImMonat = 31;}
+
+
+					//k wird berechnet = (y2 - y1)/(x2 - x1)
+					k = (valuesZuMonateZuordung(wert).get(i).get(valuesZuMonateZuordung(wert).get(i).size()-1) - 
+							(verbrauchDesLetzenTagesProMonat[i-1]))
+							/
+							(datenZuMonateZuordung(wert).get(i).get(datenZuMonateZuordung(wert).get(i).size()-1) - 
+									(datumUTSDesLetztenTagesProMonat[i-1]));
+
+					//d wird berechnet = y1 - k * x1 oder y2 - k * x2
+					d = verbrauchDesLetzenTagesProMonat[i-1] - 
+							k * datumUTSDesLetztenTagesProMonat[i-1];
+
+					Date ersterTag = new Date(jahr-1900, i, 1);
+					long ersterTagUTS = ersterTag.getTime()/1000L;
+					Date letzterTag = new Date(jahr-1900, i, tageImMonat);
+					long letzterTagUTS = letzterTag.getTime()/1000L;
+
+					long verbrauchErsterMonatsTag = k * ersterTagUTS + d;
+					long verbrauchLetzterMonatsTag = k * letzterTagUTS + d;
+
+					//Der absloute Verbrauch pro Monat wird berechnet
+					long verbrauchProMonate = verbrauchLetzterMonatsTag - verbrauchErsterMonatsTag;
+					verbrauchProMonat.add(verbrauchProMonate);
+
+					//Verbrauch des letzen Tages im Monat wird gespeichert, sodass
+					//man im nächsten Monat von diesem y Wert ausgehen kann
+					verbrauchDesLetzenTagesProMonat[i] = verbrauchLetzterMonatsTag;
+
+					//Datum des letzen Tages in UTS im Monat wird gespeichert, sodass
+					//man im nächsten Monat von diesem x Wert ausgehen kann
+					datumUTSDesLetztenTagesProMonat[i] = letzterTagUTS;
+
+					//Verbrauch des ersten Tages im Monat wird gespeichert, sodass
+					//man über Monate interpolieren kann, welche keine Aufzeichnungen 
+					//haben (als y1 Wert)
+					verbrauchDesErstenTagesProMonat[i] = verbrauchErsterMonatsTag;
+
+					//Datumdes ersten Tages im Monat wird gespeichert, sodass
+					//man über Monate interpolieren kann, welche keine Aufzeichnungen 
+					//haben (als x1 Wert)
+					datumUTSDesErstenTagesProMonat[i] = ersterTagUTS;
+
+				}
+			}
+
+			if(datenZuMonateZuordung(wert).get(i).size() == 0){
+
+				if((i > 0) && (i < monate)){
+
+					long x1 = 0;
+					long x2 = 0;
+					long y1 = 0;
+					long y2 = 0;
+
+					if(i == 1){tageImMonat = 29;}
+					if(i == 2){tageImMonat = 31;}
+					if(i == 3){tageImMonat = 30;}
+					if(i == 4){tageImMonat = 31;}
+					if(i == 5){tageImMonat = 30;}
+					if(i == 6){tageImMonat = 31;}
+					if(i == 7){tageImMonat = 31;}
+					if(i == 8){tageImMonat = 30;}
+					if(i == 9){tageImMonat = 31;}
+					if(i == 10){tageImMonat = 30;}
+
+					for(int j = i; j > -1; j --){
+
+						if(datenZuMonateZuordung(wert).get(j).size() > 0){
+
+							x1 = datumUTSDesLetztenTagesProMonat[j];
+							y1 = verbrauchDesLetzenTagesProMonat[j];
+
+							break;
+
+						}
+					}
+
+					for(int j = i; j < monate; j ++){
+
+						if(datenZuMonateZuordung(wert).get(j).size() > 0){
+
+							x2 = datumUTSDesErstenTagesProMonat[j];
+							y2 = verbrauchDesErstenTagesProMonat[j];
+
+							break;
+
+						}
+					}
+
+					k = (y2-y1)/(x2-x1);
+
+					d = y1 - k*x1;
+
+					Date ersterTag = new Date(jahr-1900, i, 1);
+					long ersterTagUTS = ersterTag.getTime()/1000L;
+					Date letzterTag = new Date(jahr-1900, i, tageImMonat);
+					long letzterTagUTS = letzterTag.getTime()/1000L;
+
+					long verbrauchErsterMonatsTag = k * ersterTagUTS + d;
+					long verbrauchLetzterMonatsTag = k * letzterTagUTS + d;
+
+					//Der absloute Verbrauch pro Monat wird berechnet
+					long verbrauchProMonate = verbrauchLetzterMonatsTag - verbrauchErsterMonatsTag;
+					verbrauchProMonat.add(verbrauchProMonate);
+
+					//Verbrauch des letzen Tages im Monat wird gespeichert, sodass
+					//man im nächsten Monat von diesem y Wert ausgehen kann
+					verbrauchDesLetzenTagesProMonat[i] = verbrauchLetzterMonatsTag;
+
+					//Datum des letzen Tages in UTS im Monat wird gespeichert, sodass
+					//man im nächsten Monat von diesem x Wert ausgehen kann
+					datumUTSDesLetztenTagesProMonat[i] = letzterTagUTS;
+
+					//Verbrauch des ersten Tages im Monat wird gespeichert, sodass
+					//man über Monate interpolieren kann, welche keine Aufzeichnungen 
+					//haben (als y1 Wert)
+					verbrauchDesErstenTagesProMonat[i] = verbrauchErsterMonatsTag;
+
+					//Datumdes ersten Tages im Monat wird gespeichert, sodass
+					//man über Monate interpolieren kann, welche keine Aufzeichnungen 
+					//haben (als x1 Wert)
+					datumUTSDesErstenTagesProMonat[i] = ersterTagUTS;
+
+				}
+			}
+		}
+
+		return verbrauchProMonat;
+
+	}
+
+	public static void AusgabeInTextdateiValuesStrom(String wert){
+
+		if(wert.equals("strom")){
+
+			try {
+				out = new FileWriter("C:\\HTL\\5.Klasse\\INFI-DBP\\VerbrauchBerechnung\\datenStrom.txt");
+			}catch(IOException e){}
+
+		}
+
+		if(wert.equals("wasser")){
+			try {
+				out = new FileWriter("C:\\HTL\\5.Klasse\\INFI-DBP\\VerbrauchBerechnung\\datenWasser.txt");
+
+			}catch(IOException e){}
+
+		}
+
+		out1 = new BufferedWriter(out);
+
+		for(int i = 0; i < Interpolation(wert).size(); i ++){
+
+			int a = toIntExact(Interpolation(wert).get(i));
+			try {
+				out1.write(Integer.toString(a));
+			} catch (IOException e) {
+			}	
+		}
+	}
+}
